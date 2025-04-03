@@ -40,6 +40,11 @@ watch(containerSize, () => {
 function handleCollapse() {
   collapsed.value = !collapsed.value;
 }
+
+const handleTabChange = (key: string) => {
+  console.log('Tab changed:', key);
+  // Add any tab change logic here if needed
+};
 </script>
 
 <style lang="scss">

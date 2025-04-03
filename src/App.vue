@@ -6,19 +6,12 @@
           <a-upload
             :custom-request="loadGerber"
             :show-upload-list="false"
-            accept=".zip,application/zip">
-            <a-button type="primary" :loading="loading">Open Gerber File</a-button>
+            accept=".zip,.gbr,.GTL,.GBL,.GTO,.GBO,.GTS,.GBS,.GTP,.GBP,.DRL,.TXT,.GKO">
+            <a-button type="primary" :loading="loading" class="upload-button">
+              <template #icon><upload-outlined /></template>
+              Open Gerber File
+            </a-button>
           </a-upload>
-        </a-col>
-        <a-col>
-          <a-button 
-            :type="render.view3d ? 'primary' : 'default'" 
-            @click="toggleView3D" 
-            :disabled="!gerber || layers.length === 0"
-            class="view3d-button">
-            <template #icon><experiment-outlined /></template>
-            3D View
-          </a-button>
         </a-col>
       </a-row>
     </template>
@@ -41,6 +34,10 @@
             <a-tooltip title="Physical dimensions of the PCB">
               <info-circle-outlined class="section-icon" />
             </a-tooltip>
+          </div>
+          <div class="info-item highlight">
+            <span class="info-label">File Name</span>
+            <span class="info-value">{{ gerber?.name }}</span>
           </div>
           <div class="info-item highlight">
             <span class="info-label">Dimensions</span>
@@ -102,36 +99,32 @@
       <output-panel :gerber="gerber" :layers="layers" :render="render" />
     </a-tab-pane>
   </x-panel-container>
-  <gerber-view v-if="!render.view3d" :layers="layers" :render="render" :style="{ top: `${canvasTop}px` }" />
-  <gerber-3d-view v-else :layers="layers" :render="render" :style="{ top: `${canvasTop}px` }" />
+  <gerber-view :layers="layers" :render="render" :style="{ top: `${canvasTop}px` }" />
 </template>
 
 <script lang="ts" setup>
 import type { InputLayer } from 'pcb-stackup';
-import { ref, computed } from 'vue';
-import { ExperimentOutlined, InfoCircleOutlined } from '@ant-design/icons-vue';
+import { ref, computed, watch } from 'vue';
+import { InfoCircleOutlined, UploadOutlined } from '@ant-design/icons-vue';
 
 import XPanelContainer from '@/components/XPanelContainer.vue';
 import XPanel from '@/components/XPanel.vue';
 import GerberView from '@/components/GerberView.vue';
-import Gerber3DView from '@/components/Gerber3DView.vue';
 
 import LayersPanel from '@/panels/LayersPanel.vue';
 import RenderPanel from '@/panels/RenderPanel.vue';
 import OutputPanel from '@/panels/OutputPanel.vue';
 
-import { loadLayers, type RenderOptions } from '@/utils/gerber';
+import { loadLayers, renderStack, type RenderOptions } from '@/utils/gerber';
 
-const gerber = ref<File>();
-
+const loading = ref(false);
+const gerber = ref<File | null>(null);
 const layers = ref<InputLayer[]>([]);
-
 const render = ref<RenderOptions>({
   side: 'top',
-  sm: 'blue',
-  cf: 'gold',
-  sp: false,
-  view3d: false,
+  sm: 'green',
+  cf: 'none',
+  sp: false
 });
 
 // PCB Dimensions
@@ -146,19 +139,33 @@ function handleResize(height: number): void {
   canvasTop.value = height;
 }
 
-const loading = ref(false);
+// Watch for render option changes
+watch(render, async (newValue) => {
+  console.log('Render options changed in App:', newValue);
+  if (layers.value.length > 0) {
+    try {
+      // Force re-render of the PCB view
+      const stack = await renderStack(layers.value, newValue);
+      console.log('Stack updated with new render options');
+    } catch (error) {
+      console.error('Error updating render:', error);
+    }
+  }
+}, { deep: true });
+
 async function loadGerber({ file }: { file: File }): Promise<void> {
-  loading.value = true;
-  gerber.value = file;
-  layers.value = await loadLayers(file);
-  
-  // Calculate PCB dimensions based on layer count
-  calculatePCBDimensions();
-  
-  loading.value = false;
+  try {
+    loading.value = true;
+    gerber.value = file;
+    layers.value = await loadLayers(file);
+    calculatePCBDimensions();
+  } catch (error) {
+    console.error('Error loading file:', error);
+  } finally {
+    loading.value = false;
+  }
 }
 
-// Simple function to estimate PCB dimensions based on layer count
 function calculatePCBDimensions(): void {
   const layerCount = layers.value.length;
   
@@ -170,10 +177,6 @@ function calculatePCBDimensions(): void {
   } else {
     pcbDimensions.value = { width: 100, height: 70 };
   }
-}
-
-function toggleView3D(): void {
-  render.value.view3d = !render.value.view3d;
 }
 </script>
 
@@ -194,8 +197,8 @@ body,
 }
 
 .pcb-info {
-  position: absolute;
-  top: 20px;
+  position: fixed;
+  top: 60px;
   right: 20px;
   background: rgba(0, 0, 0, 0.85);
   backdrop-filter: blur(10px);
@@ -318,5 +321,20 @@ body,
       color: #4caf50;
     }
   }
+}
+
+.upload-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.upload-button {
+  min-width: 120px;
+}
+
+.info-section h3 {
+  margin: 10px 0;
+  color: #1890ff;
 }
 </style>

@@ -44,16 +44,32 @@ const dragging = ref(false);
 watch([image, container, translate], () => {
   const canvas = canvasRef.value;
   if (!canvas || !container.value) return;
+
+  // Set canvas dimensions
   canvas.width = container.value.width;
   canvas.height = container.value.height;
 
-  if (!image.value) return;
-  if (!image.value.width || !image.value.height) return;
-
+  // Clear canvas with white background
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  if (!image.value) {
+    console.log('No image to render');
+    return;
+  }
+
+  if (!image.value.width || !image.value.height) {
+    console.log('Image has no dimensions:', image.value);
+    return;
+  }
+
+  console.log('Rendering image:', image.value.width, 'x', image.value.height);
+
   const rect = scaleInside(canvas, image.value);
+  console.log('Scaled dimensions:', rect);
 
   const canvasCenter = centerOf(canvas);
   const imageCenter = centerOf(rect);
@@ -64,13 +80,18 @@ watch([image, container, translate], () => {
   translate.x = withIn(translate.x, canvasCenter.x + imageCenter.x * scale - 50);
   translate.y = withIn(translate.y, canvasCenter.y + imageCenter.y * scale - 50);
 
-  ctx.save();
-  ctx.translate(canvasCenter.x, canvasCenter.y);
-  ctx.translate(translate.x, translate.y);
-  ctx.scale(scale, scale);
-  ctx.translate(-imageCenter.x, -imageCenter.y);
-  ctx.drawImage(image.value, 0, 0, rect.width, rect.height);
-  ctx.restore();
+  try {
+    ctx.save();
+    ctx.translate(canvasCenter.x, canvasCenter.y);
+    ctx.translate(translate.x, translate.y);
+    ctx.scale(scale, scale);
+    ctx.translate(-imageCenter.x, -imageCenter.y);
+    ctx.drawImage(image.value, 0, 0, rect.width, rect.height);
+    ctx.restore();
+    console.log('Image rendered successfully');
+  } catch (error) {
+    console.error('Error rendering image:', error);
+  }
 });
 
 watch(image, () => {
