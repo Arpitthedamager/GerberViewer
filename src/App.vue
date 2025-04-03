@@ -171,6 +171,25 @@ watch(render, async (newValue) => {
       // Force re-render of the PCB view
       const stack = await renderStack(layers.value, newValue);
       console.log('Stack updated with new render options');
+      
+      // Update layers with SVG content
+      layers.value = layers.value.map(layer => {
+        const side = layer.side === 'top' ? stack.top : stack.bottom;
+        if (side && layer.type === 'copper' || layer.type === 'soldermask') {
+          return {
+            ...layer,
+            svg: side.svg
+          };
+        }
+        return layer;
+      });
+
+      // Update PCB dimensions from the stackup
+      if (stack.top) {
+        const width = stack.top.width ? parseFloat(stack.top.width.toString()) || 150 : 150;
+        const height = stack.top.height ? parseFloat(stack.top.height.toString()) || 100 : 100;
+        render.value.dimensions = { width, height };
+      }
     } catch (error) {
       console.error('Error updating render:', error);
     }
@@ -182,7 +201,28 @@ async function loadGerber({ file }: { file: File }): Promise<void> {
     loading.value = true;
     gerber.value = file;
     layers.value = await loadLayers(file);
-    calculatePCBDimensions();
+    
+    // Initial render to get SVG content
+    const stack = await renderStack(layers.value, render.value);
+    
+    // Update layers with SVG content
+    layers.value = layers.value.map(layer => {
+      const side = layer.side === 'top' ? stack.top : stack.bottom;
+      if (side && (layer.type === 'copper' || layer.type === 'soldermask')) {
+        return {
+          ...layer,
+          svg: side.svg
+        };
+      }
+      return layer;
+    });
+
+    // Set PCB dimensions from the stackup
+    if (stack.top) {
+      const width = stack.top.width ? parseFloat(stack.top.width.toString()) || 150 : 150;
+      const height = stack.top.height ? parseFloat(stack.top.height.toString()) || 100 : 100;
+      render.value.dimensions = { width, height };
+    }
   } catch (error) {
     console.error('Error loading file:', error);
   } finally {
