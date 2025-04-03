@@ -13,6 +13,26 @@
             </a-button>
           </a-upload>
         </a-col>
+        <a-col>
+          <a-button 
+            type="primary" 
+            :class="['view3d-button', { 'active': render.view3d }]"
+            @click="toggle3DView"
+          >
+            <template #icon><eye-outlined /></template>
+            {{ render.view3d ? '2D View' : '3D View' }}
+          </a-button>
+        </a-col>
+        <a-col v-if="!render.view3d">
+          <a-button 
+            type="primary" 
+            :class="['both-sides-button', { 'active': render.showBothSides }]"
+            @click="toggleBothSides"
+          >
+            <template #icon><swap-outlined /></template>
+            {{ render.showBothSides ? 'Single Side' : 'Both Sides' }}
+          </a-button>
+        </a-col>
       </a-row>
     </template>
     
@@ -99,17 +119,19 @@
       <output-panel :gerber="gerber" :layers="layers" :render="render" />
     </a-tab-pane>
   </x-panel-container>
-  <gerber-view :layers="layers" :render="render" :style="{ top: `${canvasTop}px` }" />
+  <gerber-view v-if="!render.view3d" :layers="layers" :render="render" :style="{ top: `${canvasTop}px` }" />
+  <gerber-3d-view v-else :layers="layers" :render="render" :style="{ top: `${canvasTop}px` }" />
 </template>
 
 <script lang="ts" setup>
 import type { InputLayer } from 'pcb-stackup';
 import { ref, computed, watch } from 'vue';
-import { InfoCircleOutlined, UploadOutlined } from '@ant-design/icons-vue';
+import { InfoCircleOutlined, UploadOutlined, EyeOutlined, SwapOutlined } from '@ant-design/icons-vue';
 
 import XPanelContainer from '@/components/XPanelContainer.vue';
 import XPanel from '@/components/XPanel.vue';
 import GerberView from '@/components/GerberView.vue';
+import Gerber3DView from '@/components/Gerber3DView.vue';
 
 import LayersPanel from '@/panels/LayersPanel.vue';
 import RenderPanel from '@/panels/RenderPanel.vue';
@@ -124,7 +146,9 @@ const render = ref<RenderOptions>({
   side: 'top',
   sm: 'green',
   cf: 'none',
-  sp: false
+  sp: false,
+  view3d: false,
+  showBothSides: false
 });
 
 // PCB Dimensions
@@ -178,6 +202,25 @@ function calculatePCBDimensions(): void {
     pcbDimensions.value = { width: 100, height: 70 };
   }
 }
+
+function toggle3DView(): void {
+  render.value.view3d = !render.value.view3d;
+}
+
+function toggleBothSides(): void {
+  render.value.showBothSides = !render.value.showBothSides;
+}
+
+// Register components
+const components = {
+  'gerber-view': GerberView,
+  'gerber-3d-view': Gerber3DView,
+  'x-panel-container': XPanelContainer,
+  'x-panel': XPanel,
+  'layers-panel': LayersPanel,
+  'render-panel': RenderPanel,
+  'output-panel': OutputPanel
+};
 </script>
 
 <style lang="scss">
@@ -194,6 +237,21 @@ body,
 .view3d-button {
   border: 1px solid #1890ff;
   font-weight: 500;
+  
+  &.active {
+    background: #1890ff;
+    color: white;
+  }
+}
+
+.both-sides-button {
+  border: 1px solid #52c41a;
+  font-weight: 500;
+  
+  &.active {
+    background: #52c41a;
+    color: white;
+  }
 }
 
 .pcb-info {

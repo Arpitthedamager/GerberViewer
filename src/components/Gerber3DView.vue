@@ -140,8 +140,12 @@ import {
   InfoCircleOutlined
 } from '@ant-design/icons-vue';
 
+interface ExtendedInputLayer extends InputLayer {
+  svg?: string;
+}
+
 const props = defineProps<{
-  layers: InputLayer[];
+  layers: ExtendedInputLayer[];
   render: RenderOptions;
 }>();
 
@@ -182,48 +186,35 @@ function getLayerColor(type: string | null): string {
   }
 }
 
-// Create texture function
-function createPCBTexture(color: string, size = 512) {
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
+// Function to create texture from layer image
+async function createTextureFromLayer(layer: ExtendedInputLayer) {
+  if (!layer.svg) return null;
   
-  // Fill with base color
-  ctx.fillStyle = color;
-  ctx.fillRect(0, 0, size, size);
-  
-  // Add some PCB pattern
-  ctx.fillStyle = 'rgba(0,0,0,0.05)';
-  
-  // Grid pattern
-  const gridSize = 20;
-  for (let i = 0; i < size; i += gridSize) {
-    ctx.fillRect(0, i, size, 1);
-    ctx.fillRect(i, 0, 1, size);
-  }
-  
-  // Create some random circuit traces
-  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-  ctx.lineWidth = 1;
-  
-  for (let i = 0; i < 30; i++) {
-    ctx.beginPath();
-    const x = Math.random() * size;
-    const y = Math.random() * size;
-    ctx.moveTo(x, y);
-    
-    for (let j = 0; j < 5; j++) {
-      const newX = x + (Math.random() - 0.5) * 100;
-      const newY = y + (Math.random() - 0.5) * 100;
-      ctx.lineTo(newX, newY);
-    }
-    
-    ctx.stroke();
-  }
-  
-  return new THREE.CanvasTexture(canvas);
+  // Create a temporary div to render SVG
+  const div = document.createElement('div');
+  div.innerHTML = layer.svg;
+  const svg = div.querySelector('svg');
+  if (!svg) return null;
+
+  // Set SVG dimensions
+  svg.setAttribute('width', '1024');
+  svg.setAttribute('height', '1024');
+
+  // Convert SVG to data URL
+  const svgData = new XMLSerializer().serializeToString(svg);
+  const svgBlob = new Blob([svgData], { type: 'image/svg+xml' });
+  const url = URL.createObjectURL(svgBlob);
+
+  // Create image and load texture
+  return new Promise<THREE.Texture | null>((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const texture = new THREE.Texture(img);
+      texture.needsUpdate = true;
+      resolve(texture);
+    };
+    img.src = url;
+  });
 }
 
 onMounted(() => {
@@ -250,237 +241,276 @@ onBeforeUnmount(() => {
 });
 
 function initScene() {
-  if (!containerRef.value || !container.value) return;
-  
   // Initialize Three.js scene with better environment
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x1a1a1a);
-  
-  // Add fog for depth
   scene.fog = new THREE.Fog(0x1a1a1a, 150, 400);
-  
-  // Create camera
+
+  // Camera setup
   camera = new THREE.PerspectiveCamera(
     45,
-    container.value.width / container.value.height,
+    container.value ? container.value.width / container.value.height : 1,
     0.1,
     1000
   );
-  camera.position.set(0, -150, 120);
+  camera.position.set(0, 0, 200);
   camera.lookAt(0, 0, 0);
-  
-  // Create renderer with better quality
-  renderer = new THREE.WebGLRenderer({ 
+
+  // Renderer setup
+  renderer = new THREE.WebGLRenderer({
     antialias: true,
-    alpha: true,
-    powerPreference: 'high-performance'
+    alpha: true
   });
-  renderer.setSize(container.value.width, container.value.height);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(container.value?.width || 800, container.value?.height || 600);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.physicallyCorrectLights = true;
-  renderer.outputEncoding = THREE.sRGBEncoding;
-  containerRef.value.appendChild(renderer.domElement);
-  
-  // Add orbit controls with better feel
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  containerRef.value?.appendChild(renderer.domElement);
+
+  // Controls setup
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
-  controls.dampingFactor = 0.1;
-  controls.rotateSpeed = 0.7;
-  controls.enablePan = true;
+  controls.dampingFactor = 0.05;
   controls.minDistance = 50;
-  controls.maxDistance = 300;
-  
-  // Add lights for better visibility
+  controls.maxDistance = 500;
+  controls.enablePan = true;
+
+  // Lighting setup
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
   scene.add(ambientLight);
-  
-  // Key light
+
   const keyLight = new THREE.DirectionalLight(0xffffff, 1.5);
-  keyLight.position.set(50, 50, 70);
+  keyLight.position.set(100, 100, 100);
   keyLight.castShadow = true;
-  keyLight.shadow.camera.near = 0.5;
-  keyLight.shadow.camera.far = 500;
-  keyLight.shadow.camera.left = -100;
-  keyLight.shadow.camera.right = 100;
-  keyLight.shadow.camera.top = 100;
-  keyLight.shadow.camera.bottom = -100;
   keyLight.shadow.mapSize.width = 2048;
   keyLight.shadow.mapSize.height = 2048;
   scene.add(keyLight);
-  
-  // Fill light
+
   const fillLight = new THREE.DirectionalLight(0xccffff, 0.6);
-  fillLight.position.set(-50, -50, 50);
+  fillLight.position.set(-100, -100, -100);
   scene.add(fillLight);
-  
-  // Rim light
+
   const rimLight = new THREE.DirectionalLight(0xffffcc, 0.5);
-  rimLight.position.set(10, 100, -50);
+  rimLight.position.set(0, 0, -100);
   scene.add(rimLight);
-  
-  // Create environment
-  createEnvironment();
-  
-  // Create PCB group to hold all PCB elements
+
+  // Initialize PCB group
   pcbGroup = new THREE.Group();
   scene.add(pcbGroup);
-  
-  // Components group
-  componentGroup = new THREE.Group();
-  
-  // Create initial PCB
-  createPCB();
-  
-  // Add dimension labels
-  addDimensionLabels();
-  
-  loaded.value = true;
-}
 
-function createEnvironment() {
-  // Studio-like floor
+  // Initialize component group
+  componentGroup = new THREE.Group();
+  scene.add(componentGroup);
+
+  // Add floor and grid
   const floorGeometry = new THREE.PlaneGeometry(1000, 1000);
-  const floorMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0x202020,
-    metalness: 0.1,
-    roughness: 0.8
+  const floorMaterial = new THREE.MeshStandardMaterial({
+    color: 0x333333,
+    side: THREE.DoubleSide
   });
   const floor = new THREE.Mesh(floorGeometry, floorMaterial);
   floor.rotation.x = -Math.PI / 2;
-  floor.position.y = -40;
+  floor.position.y = -50;
   floor.receiveShadow = true;
   scene.add(floor);
-  
-  // Add a subtle grid
+
   const gridHelper = new THREE.GridHelper(1000, 100, 0x444444, 0x222222);
-  gridHelper.position.y = -39.9;
+  gridHelper.position.y = -49.9;
   scene.add(gridHelper);
-}
 
-function createPCB() {
-  // PCB dimensions
-  const pcbWidth = 100;
-  const pcbHeight = 70;
-  const pcbDepth = 1.6;
-  
-  // Create textures
-  const solderMaskColor = COLORS[props.render.sm][0].replace(/bf$/, '');
-  const pcbTexture = createPCBTexture(solderMaskColor);
-  
-  // Create PCB with better materials
-  const pcbGeometry = new THREE.BoxGeometry(pcbWidth, pcbHeight, pcbDepth);
-  const pcbMaterial = new THREE.MeshStandardMaterial({ 
-    color: new THREE.Color(solderMaskColor),
-    roughness: 0.4,
-    metalness: 0.2,
-    map: pcbTexture
-  });
-  
-  // Create multi-material PCB
-  pcbMesh = new THREE.Mesh(pcbGeometry, pcbMaterial);
-  pcbMesh.castShadow = true;
-  pcbMesh.receiveShadow = true;
-  pcbGroup.add(pcbMesh);
-  
-  // Add layer information
-  addLayerInfo();
-  
-  // Add copper layers
-  addCopperLayers(pcbWidth, pcbHeight);
-  
-  // Position the PCB
-  pcbGroup.position.set(0, 0, 0);
-  pcbGroup.rotation.x = Math.PI / 12;
-}
-
-function addLayerInfo() {
-  const pcbWidth = 100;
-  const pcbHeight = 70;
-  
-  // Add layer count
-  const layerCount = new SpriteText(`Layers: ${props.layers.length}`, 2, 'white');
-  layerCount.position.set(0, pcbHeight/2 + 10, 0);
-  pcbGroup.add(layerCount);
-  
-  // Add dimensions
-  const dimensions = new SpriteText(`${pcbWidth}mm × ${pcbHeight}mm`, 2, 'white');
-  dimensions.position.set(0, pcbHeight/2 + 20, 0);
-  pcbGroup.add(dimensions);
-}
-
-function addCopperLayers(pcbWidth: number, pcbHeight: number) {
-  const copperColor = FINISHES[props.render.cf];
-  const copperMaterial = new THREE.MeshStandardMaterial({ 
-    color: new THREE.Color(copperColor),
-    metalness: 0.9,
-    roughness: 0.1
-  });
-  
-  // Create top copper layer
-  const topCopper = new THREE.Mesh(
-    new THREE.PlaneGeometry(pcbWidth - 10, pcbHeight - 10),
-    copperMaterial
-  );
-  topCopper.position.z = 0.8;
-  topCopper.rotation.x = -Math.PI / 2;
-  pcbGroup.add(topCopper);
-  
-  // Create bottom copper layer
-  const bottomCopper = new THREE.Mesh(
-    new THREE.PlaneGeometry(pcbWidth - 10, pcbHeight - 10),
-    copperMaterial
-  );
-  bottomCopper.position.z = -0.8;
-  bottomCopper.rotation.x = Math.PI / 2;
-  pcbGroup.add(bottomCopper);
-  
-  // Add layer labels
-  const topLabel = new SpriteText('Top Layer', 1.5, 'white');
-  topLabel.position.set(0, 0, 1);
-  pcbGroup.add(topLabel);
-  
-  const bottomLabel = new SpriteText('Bottom Layer', 1.5, 'white');
-  bottomLabel.position.set(0, 0, -1);
-  pcbGroup.add(bottomLabel);
-}
-
-function addDimensionLabels() {
-  const pcbWidth = 100;
-  const pcbHeight = 70;
-  
-  // Add width dimension
-  const widthLabel = new SpriteText(`${pcbWidth}mm`, 2, 'white');
-  widthLabel.position.set(0, -pcbHeight/2 - 10, 0);
-  pcbGroup.add(widthLabel);
-  
-  // Add height dimension
-  const heightLabel = new SpriteText(`${pcbHeight}mm`, 2, 'white');
-  heightLabel.position.set(-pcbWidth/2 - 10, 0, 0);
-  heightLabel.rotation.z = Math.PI / 2;
-  pcbGroup.add(heightLabel);
-  
-  // Add component count
-  const componentCount = new SpriteText(`Components: ${props.layers.filter(l => l.type === 'copper').length}`, 2, 'white');
-  componentCount.position.set(0, pcbHeight/2 + 20, 0);
-  pcbGroup.add(componentCount);
+  loaded.value = true;
+  updatePCB();
 }
 
 function updatePCB() {
-  if (pcbMesh) {
-    pcbGroup.clear();
-    createPCB();
+  if (!pcbGroup || !props.layers.length) return;
+
+  // Clear existing PCB
+  pcbGroup.clear();
+  componentGroup.clear();
+
+  // Get PCB dimensions from actual board dimensions
+  const pcbWidth = props.render.dimensions?.width || 150;
+  const pcbHeight = props.render.dimensions?.height || 100;
+  const pcbDepth = 1.6;
+
+  // Create PCB base
+  const pcbGeometry = new THREE.BoxGeometry(pcbWidth, pcbHeight, pcbDepth);
+  const pcbMaterial = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(COLORS[props.render.sm][0]),
+    roughness: 0.7,
+    metalness: 0.2
+  });
+  const pcbMesh = new THREE.Mesh(pcbGeometry, pcbMaterial);
+  pcbMesh.castShadow = true;
+  pcbMesh.receiveShadow = true;
+  pcbGroup.add(pcbMesh);
+
+  // Get layers
+  const topCopper = props.layers.find(layer => layer.type === 'copper' && layer.side === 'top');
+  const bottomCopper = props.layers.find(layer => layer.type === 'copper' && layer.side === 'bottom');
+  const topMask = props.layers.find(layer => layer.type === 'soldermask' && layer.side === 'top');
+  const bottomMask = props.layers.find(layer => layer.type === 'soldermask' && layer.side === 'bottom');
+
+  // Create materials with textures
+  Promise.all([
+    topCopper && createTextureFromLayer(topCopper),
+    bottomCopper && createTextureFromLayer(bottomCopper),
+    topMask && createTextureFromLayer(topMask),
+    bottomMask && createTextureFromLayer(bottomMask)
+  ]).then(([topCopperTexture, bottomCopperTexture, topMaskTexture, bottomMaskTexture]) => {
+    // Create copper material with texture
+    const createCopperMaterial = (texture: THREE.Texture | null) => new THREE.MeshStandardMaterial({
+      color: new THREE.Color(FINISHES[props.render.cf] || '#cc9933'),
+      roughness: 0.3,
+      metalness: 0.8,
+      map: texture || undefined,
+      transparent: true,
+      opacity: 0.9
+    });
+
+    // Create mask material with texture
+    const createMaskMaterial = (texture: THREE.Texture | null) => new THREE.MeshStandardMaterial({
+      color: new THREE.Color(COLORS[props.render.sm][0]),
+      roughness: 0.8,
+      metalness: 0.1,
+      map: texture || undefined,
+      transparent: true,
+      opacity: 0.8
+    });
+
+    // Create top copper layer
+    if (topCopper && topCopperTexture) {
+      const topCopperGeometry = new THREE.PlaneGeometry(pcbWidth, pcbHeight);
+      const topCopperMesh = new THREE.Mesh(topCopperGeometry, createCopperMaterial(topCopperTexture));
+      topCopperMesh.position.z = pcbDepth/2 + 0.01;
+      topCopperMesh.rotation.x = -Math.PI/2;
+      topCopperMesh.castShadow = true;
+      topCopperMesh.receiveShadow = true;
+      pcbGroup.add(topCopperMesh);
+    }
+
+    // Create bottom copper layer
+    if (bottomCopper && bottomCopperTexture) {
+      const bottomCopperGeometry = new THREE.PlaneGeometry(pcbWidth, pcbHeight);
+      const bottomCopperMesh = new THREE.Mesh(bottomCopperGeometry, createCopperMaterial(bottomCopperTexture));
+      bottomCopperMesh.position.z = -pcbDepth/2 - 0.01;
+      bottomCopperMesh.rotation.x = Math.PI/2;
+      bottomCopperMesh.castShadow = true;
+      bottomCopperMesh.receiveShadow = true;
+      pcbGroup.add(bottomCopperMesh);
+    }
+
+    // Create top mask layer
+    if (topMask && topMaskTexture) {
+      const topMaskGeometry = new THREE.PlaneGeometry(pcbWidth, pcbHeight);
+      const topMaskMesh = new THREE.Mesh(topMaskGeometry, createMaskMaterial(topMaskTexture));
+      topMaskMesh.position.z = pcbDepth/2 + 0.02;
+      topMaskMesh.rotation.x = -Math.PI/2;
+      topMaskMesh.castShadow = true;
+      topMaskMesh.receiveShadow = true;
+      pcbGroup.add(topMaskMesh);
+    }
+
+    // Create bottom mask layer
+    if (bottomMask && bottomMaskTexture) {
+      const bottomMaskGeometry = new THREE.PlaneGeometry(pcbWidth, pcbHeight);
+      const bottomMaskMesh = new THREE.Mesh(bottomMaskGeometry, createMaskMaterial(bottomMaskTexture));
+      bottomMaskMesh.position.z = -pcbDepth/2 - 0.02;
+      bottomMaskMesh.rotation.x = Math.PI/2;
+      bottomMaskMesh.castShadow = true;
+      bottomMaskMesh.receiveShadow = true;
+      pcbGroup.add(bottomMaskMesh);
+    }
+
+    // Add vias and components after textures are loaded
+    addVias(pcbWidth, pcbHeight, pcbDepth);
+    addComponents(pcbWidth, pcbHeight, pcbDepth);
+
+    // Center camera on PCB
+    pcbGroup.position.set(-pcbWidth/2, -pcbHeight/2, 0);
+    camera.position.set(0, 0, Math.max(pcbWidth, pcbHeight) * 1.5);
+    camera.lookAt(0, 0, 0);
+    controls.update();
+  });
+}
+
+function addVias(width: number, height: number, depth: number) {
+  const viaMaterial = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(FINISHES[props.render.cf] || '#cc9933'),
+    roughness: 0.2,
+    metalness: 0.9
+  });
+
+  // Add some example vias
+  for (let i = 0; i < 20; i++) {
+    const viaGeometry = new THREE.CylinderGeometry(0.5, 0.5, depth, 16);
+    const viaMesh = new THREE.Mesh(viaGeometry, viaMaterial);
+    
+    // Random position
+    viaMesh.position.set(
+      (Math.random() - 0.5) * (width - 20),
+      (Math.random() - 0.5) * (height - 20),
+      0
+    );
+    
+    viaMesh.castShadow = true;
+    viaMesh.receiveShadow = true;
+    pcbGroup.add(viaMesh);
+  }
+}
+
+function addComponents(width: number, height: number, depth: number) {
+  // Component types and their properties
+  const componentTypes = [
+    { name: 'IC', width: 5, height: 1, depth: 5, color: 0x333333 },
+    { name: 'Resistor', width: 2, height: 0.5, depth: 1, color: 0x666666 },
+    { name: 'Capacitor', width: 2, height: 1, depth: 2, color: 0x999999 },
+    { name: 'Connector', width: 3, height: 1.5, depth: 3, color: 0x444444 }
+  ];
+
+  // Add components
+  for (let i = 0; i < 15; i++) {
+    const type = componentTypes[Math.floor(Math.random() * componentTypes.length)];
+    const componentMaterial = new THREE.MeshStandardMaterial({
+      color: type.color,
+      roughness: 0.5,
+      metalness: 0.5
+    });
+
+    const component = new THREE.Mesh(
+      new THREE.BoxGeometry(type.width, type.height, type.depth),
+      componentMaterial
+    );
+    
+    // Random position on top of PCB
+    component.position.set(
+      (Math.random() - 0.5) * (width - 20),
+      (Math.random() - 0.5) * (height - 20),
+      depth/2 + type.height/2
+    );
+    
+    // Random rotation around Z axis
+    component.rotation.z = Math.random() * Math.PI * 2;
+    
+    component.castShadow = true;
+    component.receiveShadow = true;
+    componentGroup.add(component);
+
+    // Add component label
+    const label = new SpriteText(type.name, 1, 'white');
+    label.position.set(
+      component.position.x,
+      component.position.y,
+      component.position.z + type.height/2 + 1
+    );
+    componentGroup.add(label);
   }
 }
 
 function animate() {
   requestAnimationFrame(animate);
-  
-  if (controls) {
-    controls.update();
-  }
-  
+  if (controls) controls.update();
   if (renderer && scene && camera) {
     renderer.render(scene, camera);
   }
@@ -489,34 +519,36 @@ function animate() {
 // Camera control functions
 function resetCamera() {
   if (camera && controls) {
-    camera.position.set(0, -150, 120);
+    camera.position.set(0, 0, 200);
     camera.lookAt(0, 0, 0);
-    controls.update();
+    controls.reset();
   }
 }
 
 function setTopView() {
   if (camera && controls) {
-    camera.position.set(0, 0, 100);
+    camera.position.set(0, 200, 0);
     camera.lookAt(0, 0, 0);
-    controls.update();
+    controls.reset();
   }
 }
 
 function setBottomView() {
   if (camera && controls) {
-    camera.position.set(0, 0, -100);
+    camera.position.set(0, -200, 0);
     camera.lookAt(0, 0, 0);
-    controls.update();
+    controls.reset();
   }
 }
 
 const activeTab = ref('all');
 
 // Computed properties for layer filtering
-const copperLayers = computed(() => props.layers.filter(l => l.type === 'copper'));
-const maskLayers = computed(() => props.layers.filter(l => l.type === 'soldermask'));
-const otherLayers = computed(() => props.layers.filter(l => !['copper', 'soldermask'].includes(l.type)));
+const copperLayers = computed(() => props.layers.filter(layer => layer.type === 'copper'));
+const maskLayers = computed(() => props.layers.filter(layer => layer.type === 'soldermask'));
+const otherLayers = computed(() => props.layers.filter(layer => 
+  layer.type !== 'copper' && layer.type !== 'soldermask' && layer.type !== 'outline'
+));
 
 function getLayerDescription(type: string | null): string {
   switch (type) {

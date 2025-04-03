@@ -24,9 +24,17 @@ const props = defineProps<{
 }>();
 
 const image = ref<HTMLImageElement>();
+const bottomImage = ref<HTMLImageElement>();
+
 watch(props, async () => {
   const stack = await renderStack(props.layers, props.render);
-  image.value = await loadSvgImage(stack[props.render.side].svg);
+  if (props.render.showBothSides) {
+    image.value = await loadSvgImage(stack.top.svg);
+    bottomImage.value = await loadSvgImage(stack.bottom.svg);
+  } else {
+    image.value = await loadSvgImage(stack[props.render.side].svg);
+    bottomImage.value = null;
+  }
 });
 
 const containerRef = ref<HTMLElement>();
@@ -41,7 +49,7 @@ const translate = reactive<IPosition & IScale>({
 
 const dragging = ref(false);
 
-watch([image, container, translate], () => {
+watch([image, bottomImage, container, translate], () => {
   const canvas = canvasRef.value;
   if (!canvas || !container.value) return;
 
@@ -62,15 +70,11 @@ watch([image, container, translate], () => {
   }
 
   if (!image.value.width || !image.value.height) {
-    console.log('Image has no dimensions:', image.value);
+    console.log('Image has no dimensions');
     return;
   }
 
-  console.log('Rendering image:', image.value.width, 'x', image.value.height);
-
   const rect = scaleInside(canvas, image.value);
-  console.log('Scaled dimensions:', rect);
-
   const canvasCenter = centerOf(canvas);
   const imageCenter = centerOf(rect);
 
@@ -86,11 +90,38 @@ watch([image, container, translate], () => {
     ctx.translate(translate.x, translate.y);
     ctx.scale(scale, scale);
     ctx.translate(-imageCenter.x, -imageCenter.y);
-    ctx.drawImage(image.value, 0, 0, rect.width, rect.height);
+
+    if (props.render.showBothSides && bottomImage.value) {
+      // Draw top layer on the left
+      ctx.save();
+      ctx.translate(-rect.width/2 - 10, 0);
+      ctx.drawImage(image.value, 0, 0, rect.width, rect.height);
+      ctx.restore();
+
+      // Draw bottom layer on the right
+      ctx.save();
+      ctx.translate(rect.width/2 + 10, 0);
+      ctx.drawImage(bottomImage.value, 0, 0, rect.width, rect.height);
+      ctx.restore();
+
+      // Add labels
+      ctx.save();
+      ctx.scale(1/scale, 1/scale);
+      ctx.font = '16px Arial';
+      ctx.fillStyle = '#000000';
+      ctx.textAlign = 'center';
+      ctx.fillText('Top Layer', -rect.width/2 - 10, -rect.height/2 - 20);
+      ctx.fillText('Bottom Layer', rect.width/2 + 10, -rect.height/2 - 20);
+      ctx.restore();
+    } else {
+      // Draw single layer
+      ctx.drawImage(image.value, 0, 0, rect.width, rect.height);
+    }
+
     ctx.restore();
-    console.log('Image rendered successfully');
+    console.log('Images rendered successfully');
   } catch (error) {
-    console.error('Error rendering image:', error);
+    console.error('Error rendering images:', error);
   }
 });
 

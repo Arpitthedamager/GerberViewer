@@ -93,10 +93,16 @@ export type RenderSolderMask = keyof typeof COLORS;
 export type RenderCopperFinish = keyof typeof FINISHES;
 
 export interface RenderOptions {
-  side: RenderSide;
-  sm: RenderSolderMask;
-  cf: RenderCopperFinish;
+  side: 'top' | 'bottom';
+  sm: string;
+  cf: string;
   sp: boolean;
+  view3d: boolean;
+  showBothSides: boolean;
+  dimensions?: {
+    width: number;
+    height: number;
+  };
 }
 
 export async function renderStack(layers: InputLayer[], options: RenderOptions): Promise<Stackup<string, InputLayer>> {
