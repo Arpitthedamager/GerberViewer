@@ -36,14 +36,14 @@
     <!-- Layer Controls (below canvas) -->
     <div v-if="layers.length" class="layer-controls-container">
       <div class="layer-controls-wrapper">
-        <a-button 
-          type="primary" 
-          :class="['both-sides-button', { 'active': render.showBothSides }]" 
-          @click="toggleBothSides"
-        >
-          <template #icon><swap-outlined /></template>
-          {{ render.showBothSides ? 'Single Side' : 'Both Sides' }}
-        </a-button>
+          <a-button 
+            type="primary" 
+            :class="['both-sides-button', { 'active': render.showBothSides }]"
+            @click="toggleBothSides"
+          >
+            <template #icon><swap-outlined /></template>
+            {{ render.showBothSides ? 'Single Side' : 'Both Sides' }}
+          </a-button>
         <a-button 
           class="layer-settings" 
           @click="showLayerSettings = true"
@@ -65,12 +65,14 @@
                 v-model:value="pcbDimensions.width" 
                 :min="0" 
                 :disabled="!layers.length"
+                :precision="dimensionUnit === 'in' ? 3 : 2"
                 placeholder="Length"
               /> x
               <a-input-number 
                 v-model:value="pcbDimensions.height" 
                 :min="0" 
                 :disabled="!layers.length"
+                :precision="dimensionUnit === 'in' ? 3 : 2"
                 placeholder="Width"
               />
               <a-select 
@@ -81,14 +83,14 @@
                 <a-select-option value="mm">mm</a-select-option>
                 <a-select-option value="in">in</a-select-option>
               </a-select>
-            </div>
+          </div>
           </div>
 
           <div class="section-row">
             <label>File Name</label>
             <span class="info-value">{{ gerber?.name || '-' }}</span>
-          </div>
-
+        </div>
+        
           <div class="section-row">
             <label>Total Layers</label>
             <span class="info-value">{{ layers.length || '-' }}</span>
@@ -109,7 +111,7 @@
             <span class="info-value">{{ padCount || '-' }}</span>
           </div>
         </div>
-
+        
         <div class="output-section">
           <h3>Output:</h3>
           <div class="section-row">
@@ -119,7 +121,7 @@
                 <a-radio-button value="svg">SVG</a-radio-button>
                 <a-radio-button value="png">PNG</a-radio-button>
               </a-radio-group>
-            </div>
+          </div>
           </div>
 
           <div class="section-row">
@@ -146,37 +148,61 @@
         </div>
       </div>
     </div>
-
+    
     <!-- Layer Settings Modal -->
     <a-modal
       v-model:visible="showLayerSettings"
       title="Layer Settings"
-      width="600px"
-      @ok="applyLayerSettings"
+      width="800px"
+      class="layer-settings-modal"
+      :footer="null"
     >
       <div class="layer-settings-content">
-        <div v-for="layer in layers" :key="layer.filename" class="layer-item">
-          <div class="layer-header">
-            <a-checkbox v-model:checked="layer.visible">
-              {{ layer.filename }}
-            </a-checkbox>
-            <span class="layer-type">{{ layer.type }}</span>
-          </div>
-          <div class="layer-controls" v-if="layer.visible">
-            <div class="color-picker" v-if="layer.type === 'copper' || layer.type === 'soldermask'">
-              <span>Color:</span>
-              <a-select v-model:value="layer.color" style="width: 100px">
-                <a-select-option value="green">Green</a-select-option>
-                <a-select-option value="red">Red</a-select-option>
-                <a-select-option value="blue">Blue</a-select-option>
-                <a-select-option value="black">Black</a-select-option>
+        <div class="layers-list">
+          <div v-for="(layer, index) in layers" :key="layer.filename" class="layer-item">
+            <div class="layer-name">{{ layer.filename }}</div>
+            <div class="layer-controls">
+              <a-select 
+                v-model:value="layer.type" 
+                style="width: 120px"
+                @change="updateLayerSettings"
+              >
+                <a-select-option value="drill">Drill</a-select-option>
+                <a-select-option value="copper">Copper</a-select-option>
+                <a-select-option value="silkscreen">Silkscreen</a-select-option>
+                <a-select-option value="soldermask">Soldermask</a-select-option>
+                <a-select-option value="ignore">Ignore</a-select-option>
               </a-select>
-            </div>
-            <div class="opacity-slider">
-              <span>Opacity:</span>
-              <a-slider v-model:value="layer.opacity" :min="0" :max="100" :step="1" style="width: 150px" />
+              
+              <div class="side-buttons" v-if="layer.type === 'copper' || layer.type === 'soldermask' || layer.type === 'silkscreen'">
+                <a-button 
+                  :type="layer.side === 'top' ? 'primary' : 'default'"
+                  size="small"
+                  @click="setLayerSide(layer, 'top')"
+                >
+                  Top
+                </a-button>
+                <a-button 
+                  :type="layer.side === 'bottom' ? 'primary' : 'default'"
+                  size="small"
+                  @click="setLayerSide(layer, 'bottom')"
+                >
+                  Bottom
+                </a-button>
+                <a-button 
+                  :type="layer.side === 'inner' ? 'primary' : 'default'"
+                  size="small"
+                  @click="setLayerSide(layer, 'inner')"
+                >
+                  Inner
+                </a-button>
+              </div>
             </div>
           </div>
+        </div>
+        <div class="modal-footer">
+          <a-button @click="restoreDefaults">Restore Default</a-button>
+          <a-button type="primary" @click="applyLayerSettings">Apply</a-button>
         </div>
       </div>
     </a-modal>
@@ -205,6 +231,7 @@ interface ExtendedLayer extends InputLayer {
   opacity: number;
   color: string;
   svg?: string;
+  side: 'top' | 'bottom' | 'inner';
 }
 
 // Define render options interface
@@ -227,6 +254,9 @@ interface ExtendedRenderOptions {
 const loading = ref(false);
 const gerber = ref<File>();
 const layers = ref<ExtendedLayer[]>([]);
+const dimensionUnit = ref('mm');
+const pcbDimensions = ref({ width: 0, height: 0 });
+const originalDimensions = ref({ width: 0, height: 0 });
 const render = ref<ExtendedRenderOptions>({
   side: 'top',
   sm: 'green',
@@ -236,8 +266,49 @@ const render = ref<ExtendedRenderOptions>({
   showBothSides: false
 });
 
-// PCB Dimensions
-const pcbDimensions = ref({ width: 100, height: 70 });
+// Computed properties for displayed dimensions
+const displayedDimensions = computed(() => {
+  if (dimensionUnit.value === 'in') {
+    return {
+      width: Number((originalDimensions.value.width / 25.4).toFixed(3)),
+      height: Number((originalDimensions.value.height / 25.4).toFixed(3))
+    };
+  }
+  return {
+    width: Number(originalDimensions.value.width.toFixed(2)),
+    height: Number(originalDimensions.value.height.toFixed(2))
+  };
+});
+
+// Watch for dimension unit changes
+watch(dimensionUnit, (newUnit) => {
+  if (newUnit === 'in') {
+    pcbDimensions.value = {
+      width: Number((originalDimensions.value.width / 25.4).toFixed(3)),
+      height: Number((originalDimensions.value.height / 25.4).toFixed(3))
+    };
+  } else {
+    pcbDimensions.value = {
+      width: Number(originalDimensions.value.width.toFixed(2)),
+      height: Number(originalDimensions.value.height.toFixed(2))
+    };
+  }
+});
+
+// Watch for pcbDimensions changes to update original values
+watch(pcbDimensions, (newDimensions) => {
+  if (dimensionUnit.value === 'in') {
+    originalDimensions.value = {
+      width: Number((newDimensions.width * 25.4).toFixed(2)),
+      height: Number((newDimensions.height * 25.4).toFixed(2))
+    };
+  } else {
+    originalDimensions.value = {
+      width: newDimensions.width,
+      height: newDimensions.height
+    };
+  }
+}, { deep: true });
 
 // Layer counts
 const copperLayers = computed(() => layers.value.filter(layer => layer.type === 'copper'));
@@ -285,11 +356,18 @@ const showLayerSettings = ref(false);
 
 // Add visible and opacity properties to layers when loading
 function processLayer(layer: InputLayer): ExtendedLayer {
+  const filename = layer.filename || '';
+  let defaultSide: 'top' | 'bottom' | 'inner' = 'top';
+  if (filename.includes('GBL') || filename.includes('GBS') || filename.includes('GBO')) {
+    defaultSide = 'bottom';
+  }
+
   return {
     ...layer,
     visible: true,
     opacity: 100,
-    color: layer.type === 'soldermask' ? 'green' : 'copper'
+    color: layer.type === 'soldermask' ? 'green' : 'copper',
+    side: defaultSide
   };
 }
 
@@ -319,7 +397,11 @@ async function loadGerber({ file }: { file: File }): Promise<void> {
     if (stack.top) {
       const width = stack.top.width ? parseFloat(stack.top.width.toString()) || 150 : 150;
       const height = stack.top.height ? parseFloat(stack.top.height.toString()) || 100 : 100;
-      pcbDimensions.value = { width, height };
+      originalDimensions.value = { width, height };
+      pcbDimensions.value = { 
+        width: dimensionUnit.value === 'in' ? Number((width / 25.4).toFixed(3)) : width,
+        height: dimensionUnit.value === 'in' ? Number((height / 25.4).toFixed(3)) : height
+      };
     }
   } catch (error) {
     console.error('Error loading file:', error);
@@ -364,7 +446,6 @@ const components = {
   'output-panel': OutputPanel
 };
 
-const dimensionUnit = ref('mm');
 const outputFormat = ref('svg');
 const outputLayered = ref(true);
 const exportRelief = ref(false);
@@ -388,17 +469,119 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', handleCanvasResize);
 });
 
-function applyLayerSettings() {
+function updateLayerVisibility(layer: ExtendedLayer) {
+  // Update the layer visibility
+  const updatedLayers = layers.value.map(l => ({
+    ...l,
+    visible: l === layer ? layer.visible : l.visible
+  }));
+  
+  // Update the render options
   render.value = {
     ...render.value,
-    layers: layers.value.map(layer => ({
+    layers: updatedLayers.map(layer => ({
       filename: layer.filename || '',
       visible: layer.visible,
       opacity: layer.opacity / 100,
       color: layer.color
     }))
   };
-  showLayerSettings.value = false;
+  
+  // Force a re-render
+  nextTick(async () => {
+    try {
+      const stack = await renderStack(updatedLayers, render.value);
+      layers.value = updatedLayers.map(layer => {
+        const side = layer.side === 'top' ? stack.top : stack.bottom;
+        if (side && (layer.type === 'copper' || layer.type === 'soldermask')) {
+          return {
+            ...layer,
+            svg: side.svg
+          };
+        }
+        return layer;
+      });
+    } catch (error) {
+      console.error('Error updating layer visibility:', error);
+    }
+  });
+}
+
+function updateLayerSettings() {
+  // Update the render options with current layer settings
+  render.value = {
+    ...render.value,
+    layers: layers.value.map(layer => ({
+      filename: layer.filename || '',
+      visible: layer.visible,
+      opacity: layer.opacity / 100,
+      color: layer.color,
+      type: layer.type,
+      side: layer.side
+    }))
+  };
+  
+  // Force a re-render
+  nextTick(async () => {
+    try {
+      const stack = await renderStack(layers.value, render.value);
+      layers.value = layers.value.map(layer => {
+        const side = layer.side === 'top' ? stack.top : stack.bottom;
+        if (side && (layer.type === 'copper' || layer.type === 'soldermask')) {
+          return {
+            ...layer,
+            svg: side.svg
+          };
+        }
+        return layer;
+      });
+      
+      // Force canvas update
+      handleCanvasResize();
+    } catch (error) {
+      console.error('Error updating layer settings:', error);
+    }
+  });
+}
+
+async function applyLayerSettings() {
+  try {
+    // Update the render options with current layer settings
+    render.value = {
+      ...render.value,
+      layers: layers.value.map(layer => ({
+        filename: layer.filename || '',
+        visible: layer.visible,
+        opacity: layer.opacity / 100,
+        color: layer.color,
+        type: layer.type,
+        side: layer.side
+      }))
+    };
+    
+    // Render the stack with updated settings
+    const stack = await renderStack(layers.value, render.value);
+    
+    // Update layers with SVG content
+    layers.value = layers.value.map(layer => {
+      const side = layer.side === 'top' ? stack.top : stack.bottom;
+      if (side && (layer.type === 'copper' || layer.type === 'soldermask')) {
+        return {
+          ...layer,
+          svg: side.svg
+        };
+      }
+      return layer;
+    });
+
+    // Force canvas update
+    handleCanvasResize();
+
+    // Close the modal after everything is updated
+    showLayerSettings.value = false;
+  } catch (error) {
+    console.error('Error applying layer settings:', error);
+  }
 }
 
 // Watch for layer setting changes
@@ -421,6 +604,60 @@ watch(() => layers.value, async (newLayers) => {
     }
   }
 }, { deep: true });
+
+type GerberLayerType = 'copper' | 'soldermask' | 'silkscreen' | 'drill' | string;
+
+function getLayerTypeColor(type: GerberLayerType | null | undefined): string {
+  if (!type) return 'default';
+  
+  switch (type) {
+    case 'copper':
+      return 'orange';
+    case 'soldermask':
+      return 'green';
+    case 'silkscreen':
+      return 'blue';
+    case 'drill':
+      return 'red';
+    default:
+      return 'default';
+  }
+}
+
+function setLayerSide(layer: ExtendedLayer, side: 'top' | 'bottom' | 'inner') {
+  layer.side = side;
+  updateLayerSettings();
+}
+
+function restoreDefaults() {
+  layers.value = layers.value.map(layer => {
+    // Determine default type based on filename
+    let defaultType = 'ignore';
+    const filename = layer.filename || '';
+    if (filename.includes('.DRL')) defaultType = 'drill';
+    else if (filename.includes('.GTL') || filename.includes('.GBL')) defaultType = 'copper';
+    else if (filename.includes('.GTO') || filename.includes('.GBO')) defaultType = 'silkscreen';
+    else if (filename.includes('.GTS') || filename.includes('.GBS')) defaultType = 'soldermask';
+    
+    // Determine default side
+    let defaultSide: 'top' | 'bottom' | 'inner' = 'top';
+    if (filename.includes('GBL') || filename.includes('GBS') || filename.includes('GBO')) {
+      defaultSide = 'bottom';
+    }
+    
+    return {
+      ...layer,
+      type: defaultType,
+      side: defaultSide,
+      visible: true,
+      opacity: 100,
+      color: defaultType === 'soldermask' ? 'green' : 'copper'
+    } as ExtendedLayer;
+  });
+  
+  updateLayerSettings();
+}
+
 </script>
 
 <style lang="scss">
@@ -555,6 +792,10 @@ watch(() => layers.value, async (newLayers) => {
     .ant-input-number {
       width: 100px;
     }
+
+    .ant-select {
+      min-width: 70px;
+    }
   }
 
   .output-section {
@@ -587,46 +828,53 @@ watch(() => layers.value, async (newLayers) => {
   border: 1px solid #d9d9d9;
 }
 
-.layer-settings-content {
-  max-height: 400px;
-  overflow-y: auto;
-  padding: 0 16px;
-
-  .layer-item {
-    border-bottom: 1px solid #f0f0f0;
-    padding: 12px 0;
-
-    &:last-child {
-      border-bottom: none;
-    }
-
-    .layer-header {
+.layer-settings-modal {
+  .ant-modal-content {
+    background: white;
+  }
+  
+  .ant-modal-body {
+    padding: 20px;
+  }
+  
+  .layers-list {
+    max-height: 500px;
+    overflow-y: auto;
+    
+    .layer-item {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      margin-bottom: 8px;
-
-      .layer-type {
-        color: #8c8c8c;
-        font-size: 12px;
-        padding: 2px 8px;
-        background: #f5f5f5;
-        border-radius: 4px;
+      padding: 12px 0;
+      border-bottom: 1px solid #f0f0f0;
+      
+      &:last-child {
+        border-bottom: none;
       }
-    }
-
-    .layer-controls {
-      display: flex;
-      gap: 16px;
-      margin-top: 8px;
-      padding-left: 24px;
-
-      .color-picker, .opacity-slider {
+      
+      .layer-name {
+        flex: 1;
+        font-family: monospace;
+        color: #333;
+      }
+      
+      .layer-controls {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 16px;
+        
+        .side-buttons {
+          display: flex;
+          gap: 8px;
+        }
       }
     }
+  }
+  
+  .modal-footer {
+    margin-top: 20px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
   }
 }
 
