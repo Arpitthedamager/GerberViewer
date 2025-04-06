@@ -27,6 +27,7 @@
   "devDependencies": {
     "@nabla/vite-plugin-eslint": "^1.4.1",
     "@types/file-saver": "^2.0.5",
+    "@types/jszip": "^3.4.0",
     "@types/lodash": "^4.14.185",
     "@types/node": "^18.7.20",
     "@types/pify": "^5.0.1",
