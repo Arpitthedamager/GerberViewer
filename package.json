@@ -12,6 +12,7 @@
     "fflate": "^0.7.3",
     "file-saver": "^2.0.5",
     "gerber-to-svg": "^4.2.8",
+    "jszip": "^3.10.1",
     "lodash": "^4.17.21",
     "pcb-stackup": "^4.2.8",
     "pify": "^6.1.0",
