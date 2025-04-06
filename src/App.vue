@@ -1,132 +1,192 @@
 <template>
-  <x-panel-container @resize="handleResize">
-    <template #extra>
-      <a-row :gutter="[8]">
-        <a-col>
+  <div class="app-container">
+    <!-- Top Section with Upload or Canvas -->
+    <div class="top-section">
+      <!-- Upload Area -->
+      <div v-if="!layers.length" class="upload-area">
+        <div class="upload-box">
+          <h3>Choose Gerber/file or drag & drop here</h3>
+          <p>File format should be</p>
+          <p class="file-format">only accepted .zip or .rar file</p>
           <a-upload
             :custom-request="loadGerber"
             :show-upload-list="false"
-            accept=".zip,.gbr,.GTL,.GBL,.GTO,.GBO,.GTS,.GBS,.GTP,.GBP,.DRL,.TXT,.GKO">
-            <a-button type="primary" :loading="loading" class="upload-button">
+            accept=".zip,.gbr,.GTL,.GBL,.GTO,.GBO,.GTS,.GBS,.GTP,.GBP,.DRL,.TXT,.GKO"
+            class="upload-trigger">
+            <a-button type="primary" :loading="loading">
               <template #icon><upload-outlined /></template>
               Open Gerber File
             </a-button>
           </a-upload>
-        </a-col>
-        <a-col>
-          <a-button 
-            type="primary" 
-            :class="['view3d-button', { 'active': render.view3d }]"
-            @click="toggle3DView"
-          >
-            <template #icon><eye-outlined /></template>
-            {{ render.view3d ? '2D View' : '3D View' }}
-          </a-button>
-        </a-col>
-        <a-col v-if="!render.view3d">
-          <a-button 
-            type="primary" 
-            :class="['both-sides-button', { 'active': render.showBothSides }]"
-            @click="toggleBothSides"
-          >
-            <template #icon><swap-outlined /></template>
-            {{ render.showBothSides ? 'Single Side' : 'Both Sides' }}
-          </a-button>
-        </a-col>
-      </a-row>
-    </template>
-    
-    <!-- PCB Info Panel -->
-    <div v-if="layers.length > 0" class="pcb-info">
-      <div class="info-header">
-        <div class="header-left">
-          <span class="info-title">PCB Details</span>
-          <a-tag color="blue" class="status-tag">Loaded</a-tag>
         </div>
-        <a-tooltip title="PCB information">
-          <info-circle-outlined class="info-icon" />
-        </a-tooltip>
       </div>
-      <div class="info-content">
-        <div class="info-section">
-          <div class="section-title">
-            <span>Board Specifications</span>
-            <a-tooltip title="Physical dimensions of the PCB">
-              <info-circle-outlined class="section-icon" />
-            </a-tooltip>
-          </div>
-          <div class="info-item highlight">
-            <span class="info-label">File Name</span>
-            <span class="info-value">{{ gerber?.name }}</span>
-          </div>
-          <div class="info-item highlight">
-            <span class="info-label">Dimensions</span>
-            <span class="info-value">{{ pcbDimensions.width }}mm × {{ pcbDimensions.height }}mm</span>
-          </div>
-        </div>
-        
-        <div class="info-section">
-          <div class="section-title">
-            <span>Layer Stack</span>
-            <a-tooltip title="PCB layer configuration">
-              <info-circle-outlined class="section-icon" />
-            </a-tooltip>
-          </div>
-          <div class="info-item">
-            <span class="info-label">Total Layers</span>
-            <span class="info-value">{{ layers.length }}</span>
-          </div>
-          <div class="info-item">
-            <span class="info-label">Copper Layers</span>
-            <span class="info-value copper">{{ copperLayers.length }}</span>
-          </div>
-          <div class="info-item">
-            <span class="info-label">Mask Layers</span>
-            <span class="info-value mask">{{ maskLayers.length }}</span>
-          </div>
-        </div>
-        
-        <div class="info-section">
-          <div class="section-title">
-            <span>View Settings</span>
-            <a-tooltip title="Current view configuration">
-              <info-circle-outlined class="section-icon" />
-            </a-tooltip>
-          </div>
-          <div class="info-item">
-            <span class="info-label">View Mode</span>
-            <span class="info-value">{{ render.view3d ? '3D' : '2D' }}</span>
-          </div>
-          <div class="info-item">
-            <span class="info-label">Side</span>
-            <span class="info-value">{{ render.side }}</span>
-          </div>
-          <div class="info-item">
-            <span class="info-label">Mask Color</span>
-            <span class="info-value" :style="{ color: render.sm }">{{ render.sm }}</span>
-          </div>
+
+      <!-- PCB Preview (shows after upload) -->
+      <div v-else class="preview-container">
+        <div class="canvas-wrapper">
+          <gerber-view 
+            :layers="layers" 
+            :render="render"
+            class="gerber-canvas" 
+          />
         </div>
       </div>
     </div>
-    
-    <a-tab-pane key="options" tab="Options">
-      <x-panel>
-        <render-panel v-model:render="render" />
-        <layers-panel v-model:layers="layers" />
-      </x-panel>
-    </a-tab-pane>
-    <a-tab-pane key="output" tab="Output">
-      <output-panel :gerber="gerber" :layers="layers" :render="render" />
-    </a-tab-pane>
-  </x-panel-container>
-  <gerber-view v-if="!render.view3d" :layers="layers" :render="render" :style="{ top: `${canvasTop}px` }" />
-  <gerber-3d-view v-else :layers="layers" :render="render" :style="{ top: `${canvasTop}px` }" />
+
+    <!-- Layer Controls (below canvas) -->
+    <div v-if="layers.length" class="layer-controls-container">
+      <div class="layer-controls-wrapper">
+        <a-button 
+          type="primary" 
+          :class="['both-sides-button', { 'active': render.showBothSides }]" 
+          @click="toggleBothSides"
+        >
+          <template #icon><swap-outlined /></template>
+          {{ render.showBothSides ? 'Single Side' : 'Both Sides' }}
+        </a-button>
+        <a-button 
+          class="layer-settings" 
+          @click="showLayerSettings = true"
+        >
+          <template #icon><setting-outlined /></template>
+          Layer Settings
+        </a-button>
+      </div>
+    </div>
+
+    <!-- PCB Details Section (Always visible) -->
+    <div class="content-container">
+      <div class="pcb-details">
+        <div class="detail-section">
+          <div class="section-row">
+            <label>Dimensions</label>
+            <div class="dimensions-input">
+              <a-input-number 
+                v-model:value="pcbDimensions.width" 
+                :min="0" 
+                :disabled="!layers.length"
+                placeholder="Length"
+              /> x
+              <a-input-number 
+                v-model:value="pcbDimensions.height" 
+                :min="0" 
+                :disabled="!layers.length"
+                placeholder="Width"
+              />
+              <a-select 
+                v-model:value="dimensionUnit" 
+                style="width: 70px"
+                :disabled="!layers.length"
+              >
+                <a-select-option value="mm">mm</a-select-option>
+                <a-select-option value="in">in</a-select-option>
+              </a-select>
+            </div>
+          </div>
+
+          <div class="section-row">
+            <label>File Name</label>
+            <span class="info-value">{{ gerber?.name || '-' }}</span>
+          </div>
+
+          <div class="section-row">
+            <label>Total Layers</label>
+            <span class="info-value">{{ layers.length || '-' }}</span>
+          </div>
+
+          <div class="section-row">
+            <label>Copper Layers</label>
+            <span class="info-value">{{ copperLayers.length || '-' }}</span>
+          </div>
+
+          <div class="section-row">
+            <label>Mask Layers</label>
+            <span class="info-value">{{ maskLayers.length || '-' }}</span>
+          </div>
+
+          <div class="section-row">
+            <label>Number of Pads</label>
+            <span class="info-value">{{ padCount || '-' }}</span>
+          </div>
+        </div>
+
+        <div class="output-section">
+          <h3>Output:</h3>
+          <div class="section-row">
+            <label>Format</label>
+            <div class="format-options">
+              <a-radio-group v-model:value="outputFormat" :disabled="!layers.length">
+                <a-radio-button value="svg">SVG</a-radio-button>
+                <a-radio-button value="png">PNG</a-radio-button>
+              </a-radio-group>
+            </div>
+          </div>
+
+          <div class="section-row">
+            <label>Layering</label>
+            <a-checkbox v-model:checked="outputLayered" :disabled="!layers.length">
+              Output Layered files
+            </a-checkbox>
+          </div>
+
+          <div class="section-row">
+            <label>Relief</label>
+            <a-checkbox v-model:checked="exportRelief" :disabled="!layers.length">
+              Export relief texture
+            </a-checkbox>
+          </div>
+
+          <a-button 
+            type="primary" 
+            class="output-button"
+            :disabled="!layers.length"
+          >
+            Output File
+          </a-button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Layer Settings Modal -->
+    <a-modal
+      v-model:visible="showLayerSettings"
+      title="Layer Settings"
+      width="600px"
+      @ok="applyLayerSettings"
+    >
+      <div class="layer-settings-content">
+        <div v-for="layer in layers" :key="layer.filename" class="layer-item">
+          <div class="layer-header">
+            <a-checkbox v-model:checked="layer.visible">
+              {{ layer.filename }}
+            </a-checkbox>
+            <span class="layer-type">{{ layer.type }}</span>
+          </div>
+          <div class="layer-controls" v-if="layer.visible">
+            <div class="color-picker" v-if="layer.type === 'copper' || layer.type === 'soldermask'">
+              <span>Color:</span>
+              <a-select v-model:value="layer.color" style="width: 100px">
+                <a-select-option value="green">Green</a-select-option>
+                <a-select-option value="red">Red</a-select-option>
+                <a-select-option value="blue">Blue</a-select-option>
+                <a-select-option value="black">Black</a-select-option>
+              </a-select>
+            </div>
+            <div class="opacity-slider">
+              <span>Opacity:</span>
+              <a-slider v-model:value="layer.opacity" :min="0" :max="100" :step="1" style="width: 150px" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </a-modal>
+  </div>
 </template>
 
 <script lang="ts" setup>
 import type { InputLayer } from 'pcb-stackup';
-import { ref, computed, watch } from 'vue';
-import { InfoCircleOutlined, UploadOutlined, EyeOutlined, SwapOutlined } from '@ant-design/icons-vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { InfoCircleOutlined, UploadOutlined, EyeOutlined, SwapOutlined, SettingOutlined } from '@ant-design/icons-vue';
 
 import XPanelContainer from '@/components/XPanelContainer.vue';
 import XPanel from '@/components/XPanel.vue';
@@ -139,10 +199,35 @@ import OutputPanel from '@/panels/OutputPanel.vue';
 
 import { loadLayers, renderStack, type RenderOptions } from '@/utils/gerber';
 
+// Define extended layer interface with our additional properties
+interface ExtendedLayer extends InputLayer {
+  visible: boolean;
+  opacity: number;
+  color: string;
+  svg?: string;
+}
+
+// Define render options interface
+interface ExtendedRenderOptions {
+  side: 'top' | 'bottom';
+  sm: string;
+  cf: string;
+  sp: boolean;
+  view3d: boolean;
+  showBothSides: boolean;
+  dimensions?: { width: number; height: number };
+  layers?: Array<{
+    filename: string;
+    visible: boolean;
+    opacity: number;
+    color: string;
+  }>;
+}
+
 const loading = ref(false);
-const gerber = ref<File | null>(null);
-const layers = ref<InputLayer[]>([]);
-const render = ref<RenderOptions>({
+const gerber = ref<File>();
+const layers = ref<ExtendedLayer[]>([]);
+const render = ref<ExtendedRenderOptions>({
   side: 'top',
   sm: 'green',
   cf: 'none',
@@ -196,13 +281,26 @@ watch(render, async (newValue) => {
   }
 }, { deep: true });
 
+const showLayerSettings = ref(false);
+
+// Add visible and opacity properties to layers when loading
+function processLayer(layer: InputLayer): ExtendedLayer {
+  return {
+    ...layer,
+    visible: true,
+    opacity: 100,
+    color: layer.type === 'soldermask' ? 'green' : 'copper'
+  };
+}
+
 async function loadGerber({ file }: { file: File }): Promise<void> {
   try {
     loading.value = true;
     gerber.value = file;
-    layers.value = await loadLayers(file);
+    const loadedLayers = await loadLayers(file);
+    layers.value = loadedLayers.map(processLayer);
     
-    // Initial render to get SVG content
+    // Initial render
     const stack = await renderStack(layers.value, render.value);
     
     // Update layers with SVG content
@@ -217,11 +315,11 @@ async function loadGerber({ file }: { file: File }): Promise<void> {
       return layer;
     });
 
-    // Set PCB dimensions from the stackup
+    // Set PCB dimensions
     if (stack.top) {
       const width = stack.top.width ? parseFloat(stack.top.width.toString()) || 150 : 150;
       const height = stack.top.height ? parseFloat(stack.top.height.toString()) || 100 : 100;
-      render.value.dimensions = { width, height };
+      pcbDimensions.value = { width, height };
     }
   } catch (error) {
     console.error('Error loading file:', error);
@@ -245,6 +343,10 @@ function calculatePCBDimensions(): void {
 
 function toggle3DView(): void {
   render.value.view3d = !render.value.view3d;
+  // Force a redraw after mode switch
+  nextTick(() => {
+    handleCanvasResize();
+  });
 }
 
 function toggleBothSides(): void {
@@ -261,178 +363,284 @@ const components = {
   'render-panel': RenderPanel,
   'output-panel': OutputPanel
 };
+
+const dimensionUnit = ref('mm');
+const outputFormat = ref('svg');
+const outputLayered = ref(true);
+const exportRelief = ref(false);
+const padCount = computed(() => 35); // Replace with actual pad count calculation
+
+// Add resize handling
+const handleCanvasResize = () => {
+  // Force canvas redraw when container size changes
+  if (render.value) {
+    const temp = { ...render.value };
+    render.value = temp;
+  }
+};
+
+// Setup resize observer
+onMounted(() => {
+  window.addEventListener('resize', handleCanvasResize);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleCanvasResize);
+});
+
+function applyLayerSettings() {
+  render.value = {
+    ...render.value,
+    layers: layers.value.map(layer => ({
+      filename: layer.filename || '',
+      visible: layer.visible,
+      opacity: layer.opacity / 100,
+      color: layer.color
+    }))
+  };
+  showLayerSettings.value = false;
+}
+
+// Watch for layer setting changes
+watch(() => layers.value, async (newLayers) => {
+  if (newLayers.length > 0) {
+    try {
+      const stack = await renderStack(newLayers, render.value);
+      layers.value = newLayers.map(layer => {
+        const side = layer.side === 'top' ? stack.top : stack.bottom;
+        if (side && (layer.type === 'copper' || layer.type === 'soldermask')) {
+          return {
+            ...layer,
+            svg: side.svg
+          };
+        }
+        return layer;
+      });
+    } catch (error) {
+      console.error('Error updating layers:', error);
+    }
+  }
+}, { deep: true });
 </script>
 
 <style lang="scss">
-html,
-body {
-  overscroll-behavior-x: none;
-}
-
-body,
-.x-panel-container {
-  background: #263238;
-}
-
-.view3d-button {
-  border: 1px solid #1890ff;
-  font-weight: 500;
-  
-  &.active {
-    background: #1890ff;
-    color: white;
-  }
-}
-
-.both-sides-button {
-  border: 1px solid #52c41a;
-  font-weight: 500;
-  
-  &.active {
-    background: #52c41a;
-    color: white;
-  }
-}
-
-.pcb-info {
-  position: fixed;
-  top: 60px;
-  right: 20px;
-  background: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(10px);
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  color: white;
-  z-index: 1000;
-  width: 280px;
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #f0f2f5;
   overflow: hidden;
-  transition: all 0.3s ease;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.top-section {
+  height: 300px;
+  background: #fff;
+  border-bottom: 1px solid #e8e8e8;
+  padding: 20px;
+  overflow: hidden;
+}
+
+.upload-area {
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
   
-  &:hover {
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
-    transform: translateY(-2px);
+  .upload-box {
+    width: 100%;
+    max-width: 600px;
+    height: 100%;
+    background: #fff;
+    border: 2px dashed #d9d9d9;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    
+    h3 {
+      font-size: 18px;
+      color: #262626;
+      margin-bottom: 8px;
+    }
+    
+    p {
+      margin: 4px 0;
+      color: #8c8c8c;
+      
+      &.file-format {
+        color: #bfbfbf;
+      }
+    }
   }
-  
-  .info-header {
+}
+
+.preview-container {
+  position: relative;
+  height: 100%;
+  width: 100%;
+}
+
+.canvas-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.gerber-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.preview-controls {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  gap: 8px;
+  z-index: 10;
+}
+
+.content-container {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.pcb-details {
+  max-width: 800px;
+  margin: 0 auto;
+  background: #fff;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+
+  .detail-section {
+    margin-bottom: 32px;
+  }
+
+  .section-row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 12px 16px;
-    background: rgba(0, 0, 0, 0.3);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    margin-bottom: 16px;
+    
+    label {
+      width: 140px;
+      color: #262626;
+      font-weight: 500;
+    }
+
+    .info-value {
+      padding: 4px 12px;
+      background: #f5f5f5;
+      border-radius: 4px;
+      color: #595959;
+      min-width: 60px;
+      text-align: center;
+    }
   }
-  
-  .header-left {
+
+  .dimensions-input {
     display: flex;
     align-items: center;
     gap: 8px;
-  }
-  
-  .info-title {
-    font-size: 16px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-  }
-  
-  .status-tag {
-    font-size: 12px;
-    padding: 0 6px;
-    height: 20px;
-    line-height: 18px;
-    border-radius: 4px;
-  }
-  
-  .info-icon, .section-icon {
-    color: #1890ff;
-    font-size: 16px;
-    cursor: pointer;
-    transition: transform 0.2s ease;
     
-    &:hover {
-      transform: scale(1.1);
+    .ant-input-number {
+      width: 100px;
     }
   }
-  
-  .info-content {
-    padding: 12px 16px;
-  }
-  
-  .info-section {
-    margin-bottom: 16px;
-    
-    &:last-child {
-      margin-bottom: 0;
+
+  .output-section {
+    border-top: 1px solid #f0f0f0;
+    padding-top: 24px;
+
+    h3 {
+      margin-bottom: 16px;
+      color: #262626;
     }
   }
-  
-  .section-title {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 8px;
-    color: #1890ff;
-    font-size: 14px;
-    font-weight: 500;
+
+  .output-button {
+    margin-top: 24px;
+    width: 100%;
+    height: 40px;
   }
-  
-  .info-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    
+}
+
+.view3d-button, .both-sides-button {
+  &.active {
+    background: #1890ff;
+    border-color: #1890ff;
+    color: white;
+  }
+}
+
+.layer-settings {
+  background: white;
+  border: 1px solid #d9d9d9;
+}
+
+.layer-settings-content {
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 0 16px;
+
+  .layer-item {
+    border-bottom: 1px solid #f0f0f0;
+    padding: 12px 0;
+
     &:last-child {
       border-bottom: none;
     }
-    
-    &.highlight {
-      background: rgba(24, 144, 255, 0.1);
-      margin: 0 -16px;
-      padding: 8px 16px;
-      border-bottom: 1px solid rgba(24, 144, 255, 0.2);
+
+    .layer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+
+      .layer-type {
+        color: #8c8c8c;
+        font-size: 12px;
+        padding: 2px 8px;
+        background: #f5f5f5;
+        border-radius: 4px;
+      }
     }
-  }
-  
-  .info-label {
-    color: #a0a0a0;
-    font-size: 14px;
-  }
-  
-  .info-value {
-    font-weight: 500;
-    color: #ffffff;
-    background: rgba(24, 144, 255, 0.2);
-    padding: 4px 8px;
-    border-radius: 4px;
-    min-width: 60px;
-    text-align: center;
-    
-    &.copper {
-      background: rgba(255, 193, 7, 0.2);
-      color: #ffc107;
-    }
-    
-    &.mask {
-      background: rgba(76, 175, 80, 0.2);
-      color: #4caf50;
+
+    .layer-controls {
+      display: flex;
+      gap: 16px;
+      margin-top: 8px;
+      padding-left: 24px;
+
+      .color-picker, .opacity-slider {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
     }
   }
 }
 
-.upload-buttons {
+.layer-controls-container {
+  background: #fff;
+  border-bottom: 1px solid #e8e8e8;
+  padding: 12px 20px;
+}
+
+.layer-controls-wrapper {
   display: flex;
-  gap: 10px;
-  margin-top: 20px;
-}
-
-.upload-button {
-  min-width: 120px;
-}
-
-.info-section h3 {
-  margin: 10px 0;
-  color: #1890ff;
+  justify-content: center;
+  gap: 12px;
+  max-width: 800px;
+  margin: 0 auto;
 }
 </style>
