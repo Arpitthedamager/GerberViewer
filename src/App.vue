@@ -225,6 +225,7 @@ import type { InputLayer } from 'pcb-stackup';
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { InfoCircleOutlined, UploadOutlined, EyeOutlined, SwapOutlined, SettingOutlined } from '@ant-design/icons-vue';
 import JSZip from 'jszip';
+import stackup from 'pcb-stackup';
 
 import XPanelContainer from '@/components/XPanelContainer.vue';
 import XPanel from '@/components/XPanel.vue';
