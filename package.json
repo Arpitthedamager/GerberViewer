@@ -20,6 +20,7 @@
     "three": "^0.175.0",
     "three-spritetext": "^1.9.5",
     "unrar-js": "^0.2.3",
+    "unrar.js": "^0.2.5",
     "util": "^0.12.4",
     "vue": "^3.2.39",
     "whats-that-gerber": "^4.2.7"

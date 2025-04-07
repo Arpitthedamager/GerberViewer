@@ -87,23 +87,40 @@
           </div>
 
           <div class="section-row">
+            <label>Mask Color</label>
+            <div class="color-display">
+              <a-select 
+                v-model:value="render.colors.sm"
+                style="width: 120px"
+                @change="updateLayerSettings"
+              >
+                <a-select-option value="#2d4a2d">Green</a-select-option>
+                <a-select-option value="#1a3a5a">Blue</a-select-option>
+                <a-select-option value="#5a1a1a">Red</a-select-option>
+                <a-select-option value="#1a1a1a">Black</a-select-option>
+              </a-select>
+              <span class="color-preview" :style="{ backgroundColor: render.colors.sm }"></span>
+            </div>
+          </div>
+
+          <div class="section-row">
             <label>File Name</label>
             <span class="info-value">{{ gerber?.name || '-' }}</span>
         </div>
         
           <div class="section-row">
             <label>Total Layers</label>
-            <span class="info-value">{{ layers.length || '-' }}</span>
+            <span class="info-value">{{ totalLayers || '-' }}</span>
           </div>
 
           <div class="section-row">
             <label>Copper Layers</label>
-            <span class="info-value">{{ copperLayers.length || '-' }}</span>
+            <span class="info-value">{{ copperLayers || '-' }}</span>
           </div>
 
           <div class="section-row">
             <label>Mask Layers</label>
-            <span class="info-value">{{ maskLayers.length || '-' }}</span>
+            <span class="info-value">{{ maskLayers || '-' }}</span>
           </div>
 
           <div class="section-row">
@@ -239,15 +256,67 @@ import OutputPanel from '@/panels/OutputPanel.vue';
 import { loadLayers, renderStack, type RenderOptions } from '@/utils/gerber';
 import { toPNG, toSVG } from '@/utils/svg';
 import { outputZip } from '@/utils/zip';
+import { processFile } from '@/utils/fileProcessor';
+import type { OutputLayer } from '@/utils/fileProcessor';
+import type { ExtendedLayer, PCBColor } from '@/types/layer';
 
-// Define extended layer interface with our additional properties
-interface ExtendedLayer extends InputLayer {
-  visible: boolean;
-  opacity: number;
-  color: string;
-  svg?: string;
-  side: 'top' | 'bottom' | 'inner';
-}
+// Add color options
+const pcbColors: PCBColor[] = [
+  {
+    name: 'Green',
+    value: 'green',
+    colors: {
+      fr4: '#2d4a2d',
+      cu: '#c0a070',
+      cf: '#2d4a2d',
+      sm: '#2d4a2d',
+      ss: '#ffffff',
+      sp: '#2d4a2d',
+      out: '#2d4a2d'
+    }
+  },
+  {
+    name: 'Blue',
+    value: 'blue',
+    colors: {
+      fr4: '#1a3a5a',
+      cu: '#c0a070',
+      cf: '#1a3a5a',
+      sm: '#1a3a5a',
+      ss: '#ffffff',
+      sp: '#1a3a5a',
+      out: '#1a3a5a'
+    }
+  },
+  {
+    name: 'Red',
+    value: 'red',
+    colors: {
+      fr4: '#5a1a1a',
+      cu: '#c0a070',
+      cf: '#5a1a1a',
+      sm: '#5a1a1a',
+      ss: '#ffffff',
+      sp: '#5a1a1a',
+      out: '#5a1a1a'
+    }
+  },
+  {
+    name: 'Black',
+    value: 'black',
+    colors: {
+      fr4: '#1a1a1a',
+      cu: '#c0a070',
+      cf: '#1a1a1a',
+      sm: '#1a1a1a',
+      ss: '#ffffff',
+      sp: '#1a1a1a',
+      out: '#1a1a1a'
+    }
+  }
+];
+
+const selectedColor = ref(pcbColors[0]);
 
 // Define render options interface
 interface ExtendedRenderOptions {
@@ -264,6 +333,15 @@ interface ExtendedRenderOptions {
     opacity: number;
     color: string;
   }>;
+  colors: {
+    fr4: string;
+    cu: string;
+    cf: string;
+    sm: string;
+    ss: string;
+    sp: string;
+    out: string;
+  };
 }
 
 const loading = ref(false);
@@ -278,7 +356,8 @@ const render = ref<ExtendedRenderOptions>({
   cf: 'none',
   sp: false,
   view3d: false,
-  showBothSides: false
+  showBothSides: false,
+  colors: pcbColors[0].colors
 });
 
 // Computed properties for displayed dimensions
@@ -325,14 +404,11 @@ watch(pcbDimensions, (newDimensions) => {
   }
 }, { deep: true });
 
-// Layer counts
-const copperLayers = computed(() => layers.value.filter(layer => layer.type === 'copper'));
-const maskLayers = computed(() => layers.value.filter(layer => layer.type === 'soldermask'));
-
-const canvasTop = ref(0);
-function handleResize(height: number): void {
-  canvasTop.value = height;
-}
+// Replace the static padCount computed property with:
+const padCount = ref(0);
+const totalLayers = ref(0);
+const copperLayers = ref(0);
+const maskLayers = ref(0);
 
 // Watch for render option changes
 watch(render, async (newValue) => {
@@ -371,18 +447,29 @@ const showLayerSettings = ref(false);
 
 // Add visible and opacity properties to layers when loading
 function processLayer(layer: InputLayer): ExtendedLayer {
-  const filename = layer.filename || '';
+  const filename = layer.filename || 'unnamed';
+  let defaultType: ExtendedLayer['type'] = 'ignore';
   let defaultSide: 'top' | 'bottom' | 'inner' = 'top';
+  
+  if (filename.includes('.DRL')) defaultType = 'drill';
+  else if (filename.includes('.GTL') || filename.includes('.GBL')) defaultType = 'copper';
+  else if (filename.includes('.GTO') || filename.includes('.GBO')) defaultType = 'silkscreen';
+  else if (filename.includes('.GTS') || filename.includes('.GBS')) defaultType = 'soldermask';
+  else if (filename.includes('.GTP') || filename.includes('.GBP')) defaultType = 'paste';
+  else if (filename.includes('.GKO')) defaultType = 'outline';
+  
   if (filename.includes('GBL') || filename.includes('GBS') || filename.includes('GBO')) {
     defaultSide = 'bottom';
   }
-
+  
   return {
     ...layer,
+    filename,
     visible: true,
     opacity: 100,
-    color: layer.type === 'soldermask' ? 'green' : 'copper',
-    side: defaultSide
+    color: defaultType === 'soldermask' ? 'green' : 'copper',
+    side: defaultSide,
+    type: defaultType
   };
 }
 
@@ -390,8 +477,16 @@ async function loadGerber({ file }: { file: File }): Promise<void> {
   try {
     loading.value = true;
     gerber.value = file;
-    const loadedLayers = await loadLayers(file);
-    layers.value = loadedLayers.map(processLayer);
+    
+    // Process the file using our new processor
+    const processed = await processFile(file);
+    layers.value = processed.layers.map(processLayer);
+    
+    // Update layer counts
+    totalLayers.value = processed.totalLayers;
+    copperLayers.value = processed.copperLayers;
+    maskLayers.value = processed.maskLayers;
+    padCount.value = processed.padCount;
     
     // Initial render
     const stack = await renderStack(layers.value, render.value);
@@ -464,7 +559,6 @@ const components = {
 const outputFormat = ref<'svg' | 'png'>('svg');
 const outputLayered = ref(false);
 const exportRelief = ref(false);
-const padCount = computed(() => 35); // Replace with actual pad count calculation
 
 // Add resize handling
 const handleCanvasResize = () => {
@@ -678,7 +772,7 @@ const errorMessage = ref<string | null>(null);
 
 async function outputFile() {
   rendering.value = true;
-  errorMessage.value = null; // Reset error message
+  errorMessage.value = null;
 
   try {
     const stack = await renderStack(layers.value, render.value);
@@ -687,13 +781,19 @@ async function outputFile() {
     const write = ext === 'png' ? toPNG : toSVG;
 
     // Generate content for top and bottom layers
-    files[`top_layer.${ext}`] = await write(stack.top.svg);
-    files[`bottom_layer.${ext}`] = await write(stack.bottom.svg);
+    if (stack.top?.svg) {
+      files[`top_layer.${ext}`] = await write(stack.top.svg);
+    }
+    if (stack.bottom?.svg) {
+      files[`bottom_layer.${ext}`] = await write(stack.bottom.svg);
+    }
 
     // If layering is enabled, add additional layers
-    if (outputLayered.value) {
+    if (outputLayered.value && stack.layers) {
       for (const layer of stack.layers) {
-        files[`${layer.filename}.${ext}`] = await write(layer.svg);
+        if (layer.svg) {
+          files[`${layer.filename}.${ext}`] = await write(layer.svg);
+        }
       }
     }
 
@@ -711,8 +811,12 @@ async function outputFile() {
         },
       });
 
-      files[`top-relief.png`] = await toPNG(reliefStack.top.svg, '#000000');
-      files[`bottom-relief.png`] = await toPNG(reliefStack.bottom.svg, '#000000');
+      if (reliefStack.top?.svg) {
+        files[`top-relief.png`] = await toPNG(reliefStack.top.svg, '#000000');
+      }
+      if (reliefStack.bottom?.svg) {
+        files[`bottom-relief.png`] = await toPNG(reliefStack.bottom.svg, '#000000');
+      }
     }
 
     // Create ZIP file
@@ -723,6 +827,21 @@ async function outputFile() {
   } finally {
     rendering.value = false;
   }
+}
+
+// Add layer visibility functions
+function showAllLayers() {
+  layers.value.forEach(layer => {
+    layer.visible = true;
+  });
+  updateLayerSettings();
+}
+
+function hideAllLayers() {
+  layers.value.forEach(layer => {
+    layer.visible = false;
+  });
+  updateLayerSettings();
 }
 
 </script>
@@ -968,5 +1087,18 @@ async function outputFile() {
 .error-message {
   color: red;
   margin-top: 10px;
+}
+
+.color-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  
+  label {
+    width: 80px;
+    color: #262626;
+    font-weight: 500;
+  }
 }
 </style>
