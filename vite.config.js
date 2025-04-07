@@ -3,6 +3,8 @@ import vue from '@vitejs/plugin-vue';
 import { resolve } from 'path';
 
 export default defineConfig({
+  output: "export", 
+  
   resolve: {
     alias: {
       '@': resolve('./src'),
