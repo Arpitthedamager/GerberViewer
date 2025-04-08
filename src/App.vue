@@ -15,7 +15,7 @@
             class="upload-trigger">
             <a-button type="primary" :loading="loading">
               <template #icon><upload-outlined /></template>
-              Open Gerber File
+              {{ loading ? 'Uploading...' : 'Open Gerber File' }}
             </a-button>
           </a-upload>
         </div>
@@ -24,6 +24,9 @@
       <!-- PCB Preview (shows after upload) -->
       <div v-else class="preview-container">
         <div class="canvas-wrapper">
+          <div v-if="isRendering" class="loading-overlay">
+            <a-spin tip="Rendering PCB..." />
+          </div>
           <gerber-view 
             :layers="layers" 
             :render="render"
@@ -259,6 +262,7 @@ import { outputZip } from '@/utils/zip';
 import { processFile } from '@/utils/fileProcessor';
 import type { OutputLayer } from '@/utils/fileProcessor';
 import type { ExtendedLayer, PCBColor } from '@/types/layer';
+import { COLORS, FINISHES, PASTE } from '@/utils/gerber';
 
 // Add color options
 const pcbColors: PCBColor[] = [
@@ -345,6 +349,7 @@ interface ExtendedRenderOptions {
 }
 
 const loading = ref(false);
+const isRendering = ref(false);
 const gerber = ref<File>();
 const layers = ref<ExtendedLayer[]>([]);
 const dimensionUnit = ref('mm');
@@ -412,17 +417,34 @@ const maskLayers = ref(0);
 
 // Watch for render option changes
 watch(render, async (newValue) => {
-  console.log('Render options changed in App:', newValue);
   if (layers.value.length > 0) {
     try {
+      isRendering.value = true;
+      
+      // Update the render options with current color settings
+      const [sm, ss] = COLORS[newValue.sm as keyof typeof COLORS] || COLORS['green'];
+      const cf = FINISHES[newValue.cf as keyof typeof FINISHES] || FINISHES['tin'];
+      
+      const updatedRender = {
+        ...newValue,
+        colors: {
+          fr4: sm,
+          cu: cf,
+          cf: cf,
+          sm: sm,
+          ss: ss,
+          sp: newValue.sp ? PASTE : 'transparent',
+          out: sm
+        }
+      };
+
       // Force re-render of the PCB view
-      const stack = await renderStack(layers.value, newValue);
-      console.log('Stack updated with new render options');
+      const stack = await renderStack(layers.value, updatedRender);
       
       // Update layers with SVG content
       layers.value = layers.value.map(layer => {
         const side = layer.side === 'top' ? stack.top : stack.bottom;
-        if (side && layer.type === 'copper' || layer.type === 'soldermask') {
+        if (side && (layer.type === 'copper' || layer.type === 'soldermask')) {
           return {
             ...layer,
             svg: side.svg
@@ -439,6 +461,8 @@ watch(render, async (newValue) => {
       }
     } catch (error) {
       console.error('Error updating render:', error);
+    } finally {
+      isRendering.value = false;
     }
   }
 }, { deep: true });
@@ -1100,5 +1124,18 @@ function hideAllLayers() {
     color: #262626;
     font-weight: 500;
   }
+}
+
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
 }
 </style>
